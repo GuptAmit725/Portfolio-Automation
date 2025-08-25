@@ -59,7 +59,7 @@ def generate_profile(request):
         return Response({"detail": "OPENAI_API_KEY not loaded or malformed. Check .env and restart server."}, status=500)
 
     client = OpenAI(
-        api_key="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"
+        api_key=""
     )
 
     system = (
