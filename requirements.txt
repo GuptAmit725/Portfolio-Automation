@@ -1,0 +1,10 @@
+django
+django 
+djangorestframework 
+django-cors-headers 
+python-magic-bin
+pillow
+django-cors-headers
+pypdf 
+python-dotenv
+openai
