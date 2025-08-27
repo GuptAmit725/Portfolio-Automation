@@ -18,7 +18,7 @@ class State(TypedDict):
     messages: Annotated[List[AnyMessage], add_messages]
 
 openai_key = getattr(settings, "OPEN_API_KEY", "") or os.getenv("OPEN_API_KEY", "")
-llm = ChatOpenAI(api_key="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",
+llm = ChatOpenAI(api_key=openai_key,
 model="gpt-4o-mini", temperature=0.2)  # uses OPENAI_API_KEY
 
 BASE_SYSTEM = (
@@ -51,7 +51,7 @@ def call_model(state: State):
     except Exception as e:
         print(f"[OpenAI Fallback] {e}. Using Gemini instead.")
         # --- Gemini branch ---
-        gem_key = "AIzaSyA801-QsOgPWolCsQNTDDjw5JVsuIwJdZY" #getattr(settings, "GEMINI_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
+        gem_key = getattr(settings, "GEMINI_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
         genai.configure(api_key=gem_key)
         gemini_model = genai.GenerativeModel("gemini-1.5-flash")
 
