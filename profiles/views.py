@@ -8,6 +8,10 @@ from pathlib import Path
 import io, os, json, re
 
 from openai import OpenAI
+import google.generativeai as genai
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import AIMessage
+
 
 def extract_text_from_pdf(file_field) -> str:
     # file_field is a Django FileField
@@ -20,6 +24,35 @@ def extract_text_from_pdf(file_field) -> str:
             except Exception:
                 pass
         return "\n".join(chunks).strip()
+    
+# --- add: robust JSON extraction & repair ---
+
+_VALID_ESC = r'\\|/|"|b|f|n|r|t|u'  # valid JSON escapes
+
+def _extract_json_block(text: str) -> str:
+    """Return the most likely JSON object/array from an LLM reply."""
+    m = re.search(r"```json\s*(\{.*?\}|\[.*?\])\s*```", text, re.S | re.I)
+    if m:
+        return m.group(1)
+    m = re.search(r"(\{.*\}|\[.*\])", text, re.S)
+    return m.group(1) if m else text
+
+def _escape_bad_backslashes(s: str) -> str:
+    r"""Replace any backslash not followed by a valid JSON escape with a double backslash.
+
+    Example:  C:\Users\me   ->   C:\\Users\\me
+    Leaves valid escapes intact: \n, \t, \u1234, \\, \", \/
+    """
+    return re.sub(rf"\\(?!({_VALID_ESC}))", r"\\\\", s)
+
+def safe_json_loads(raw: str):
+    try:
+        return json.loads(raw)  # already valid JSON?
+    except json.JSONDecodeError:
+        candidate = _extract_json_block(raw)
+        candidate = _escape_bad_backslashes(candidate)
+        return json.loads(candidate, strict=False)
+
 
 @api_view(["POST"])
 def generate_profile(request):
@@ -57,9 +90,10 @@ def generate_profile(request):
 
     if not key or not key.startswith("sk-"):
         return Response({"detail": "OPENAI_API_KEY not loaded or malformed. Check .env and restart server."}, status=500)
-
+    
+    openai_key = getattr(settings, "OPEN_API_KEY", "") or os.getenv("OPEN_API_KEY", "")
     client = OpenAI(
-        api_key=""
+        api_key= ''
     )
 
     system = (
@@ -72,15 +106,34 @@ def generate_profile(request):
     )
 
     user = f"Here is the user's CV text:\n\n{cv_text[:30000]}"
+    # resp = client.responses.create(
+    #     model="gpt-5-mini",
+    #     input=[
+    #         {"role": "system", "content": system},
+    #         {"role": "user", "content": user},
+    #     ],
+    #     )
 
     # Use Chat Completions JSON mode (widely supported)
-    resp = client.responses.create(
-    model="gpt-4o-mini",
-    input=[
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ],
-)
+    try:
+        resp = client.responses.create(
+        model="gpt-4o-mini",
+        input=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        )
+    except Exception as e:
+        print(f"[OpenAI Fallback] {e}. Using Gemini instead.")
+        pass
+        # --- Gemini fallback ---
+        gem_key = ""#getattr(settings, "GEMINI_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
+        if not gem_key:
+            return Response({"detail": "Both OpenAI and Gemini unavailable (no GEMINI_API_KEY)."}, status=502)
+        genai.configure(api_key=gem_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        resp = model.generate_content([system, user])
+        # resp = gem_resp.text
 
     # ---- helper to extract text from Responses API ----
     def response_to_text(r):
@@ -108,9 +161,8 @@ def generate_profile(request):
         if raw_text.lower().startswith("json"):
             raw_text = raw_text[4:].lstrip()
 
-    import json, re
     try:
-        payload = json.loads(raw_text)
+        payload = safe_json_loads(raw_text)
     except Exception:
         m = re.search(r"\{.*\}\s*$", raw_text, re.S)
         if not m:
@@ -118,7 +170,7 @@ def generate_profile(request):
                 {"detail": "Model did not return JSON", "raw": raw_text[:2000]},
                 status=502,
             )
-        payload = json.loads(m.group(0))
+        payload = safe_json_loads(m.group(0))
 
     if not isinstance(payload, dict) or "profile" not in payload or "html" not in payload:
         return Response({"detail": "Malformed JSON from model", "raw": raw_text[:2000]}, status=502)

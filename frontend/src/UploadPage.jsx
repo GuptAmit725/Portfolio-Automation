@@ -1,167 +1,225 @@
 // src/UploadPage.jsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
-import "./App.css";
 
-const API = "http://127.0.0.1:8000/api";
+const API = "http://127.0.0.1:8000/api/uploads/";
 
 export default function UploadPage() {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+
   const [file, setFile] = useState(null);
   const [docType, setDocType] = useState("CV");
-  const [docs, setDocs] = useState([]);
+  const [title, setTitle] = useState("");
+
+  // Project-specific
+  const [projectUrl, setProjectUrl] = useState("");
+  const [projectDesc, setProjectDesc] = useState("");
+
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const fileInputRef = useRef(null);
 
-  const fetchDocs = async () => {
-    const res = await axios.get(`${API}/documents/`);
-    setDocs(res.data);
-  };
-  useEffect(() => { fetchDocs(); }, []);
+  async function fetchList() {
+    setLoading(true);
+    setErr("");
+    try {
+      const res = await axios.get(API);
+      setItems(Array.isArray(res.data) ? res.data : (res.data?.results || []));
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message || "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  const handlePick = () => fileInputRef.current?.click();
+  useEffect(() => { fetchList(); }, []);
 
   const handleUpload = async () => {
-    if (!file) return;
-    const data = new FormData();
-    data.append("file", file);
-    data.append("doc_type", docType);
-    setUploading(true);
     try {
-      await axios.post(`${API}/documents/`, data, {
-        headers: { "Content-Type": "multipart/form-data" },
-        onUploadProgress: (e) => {
-          if (!e.total) return;
-          setProgress(Math.round((e.loaded / e.total) * 100));
+      setErr("");
+      setUploading(true);
+
+      if (docType === "PROJECT") {
+        // JSON-only path (file optional)
+        const body = {
+          doc_type: "PROJECT",
+          title: (title || "").trim(),
+          external_url: (projectUrl || "").trim(),
+          description: (projectDesc || "").trim(),
+        };
+        if (!body.external_url) {
+          setErr("Please enter the GitHub URL for the project.");
+          setUploading(false);
+          return;
         }
-      });
-      setFile(null);
-      setProgress(0);
-      await fetchDocs();
-    } finally {
+        // Try canonical endpoint first
+        const endpoints = [API, "http://127.0.0.1:8000/api/documents/"];
+        let created = null;
+        for (const ep of endpoints) {
+          try {
+            const res = await axios.post(ep, body, { headers: { "Content-Type": "application/json" } });
+            created = res.data;
+            break;
+          } catch (_) {}
+        }
+        if (!created) throw new Error("Could not create project. Check API routes/serializer.");
+        await fetchList();
+        setTitle(""); setProjectUrl(""); setProjectDesc(""); setFile(null);
+        setUploading(false);
+        return;
+      }
+
+      // Regular file upload path
+      if (!file) {
+        setErr("Choose a file to upload.");
+        setUploading(false);
+        return;
+      }
+      const form = new FormData();
+      form.append("file", file);
+      form.append("doc_type", docType);
+      if (title.trim()) form.append("title", title.trim());
+      const endpoints = [API, "http://127.0.0.1:8000/api/documents/"];
+      let ok = false;
+      for (const ep of endpoints) {
+        try {
+          await axios.post(ep, form, { headers: { "Content-Type": "multipart/form-data" } });
+          ok = true; break;
+        } catch (_) {}
+      }
+      if (!ok) throw new Error("Upload failed. Check API routes/permissions.");
+      await fetchList();
+      setFile(null); setTitle("");
       setUploading(false);
+    } catch (e) {
+      setUploading(false);
+      setErr(e?.response?.data?.detail || e.message || "Failed to upload");
     }
   };
 
-  const deleteDoc = async (id) => {
-    if (!window.confirm("Delete this document?")) return;
-    await axios.delete(`${API}/documents/${id}/`);
-    await fetchDocs();
+  const handleDelete = async (id) => {
+    try {
+      const endpoints = [`${API}${id}/`, `http://127.0.0.1:8000/api/documents/${id}/`];
+      let ok = false;
+      for (const ep of endpoints) {
+        try { await axios.delete(ep); ok = true; break; } catch (_) {}
+      }
+      if (ok) setItems((arr) => arr.filter((x) => x.id !== id));
+    } catch (e) {}
+  };
+
+  const shell = { minHeight: "100vh", background: "#0f172a", color: "#f1f5f9" };
+  const wrap = { maxWidth: 980, margin: "0 auto", padding: "28px 16px" };
+  const card = { background: "#1e293b", border: "1px solid #334155", borderRadius: 18, padding: 18 };
+
+  const input = {
+    padding: "10px 12px", borderRadius: 10, border: "1px solid #334155",
+    background: "#0b1220", color: "#e5e7eb"
+  };
+  const btn = {
+    border: 0, borderRadius: 12, padding: "10px 14px", fontWeight: 800, cursor: "pointer",
+    background: "linear-gradient(90deg,#8b5cf6,#6366f1)", color: "#fff",
+    boxShadow: "0 6px 16px rgba(139,92,246,.35)"
   };
 
   return (
-    <div className="container">
-      <div className="hero">
-        <div>
-          <div className="badge">Step 1 · Upload documents</div>
-          <h1 className="h1">Upload Document</h1>
-          <p className="sub">PDF, DOCX, PNG, JPG · up to 10MB each</p>
+    <div style={shell}>
+      <div style={wrap}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 999, background: "radial-gradient(circle at 30% 30%, #8b5cf6, #7c3aed)", boxShadow: "0 0 8px rgba(139,92,246,.8)" }} />
+            <strong>Step 1 · Upload documents</strong>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <a href="/portfolio" style={{ color: "#c7d2fe" }}>Portfolio</a>
+          </div>
+        </div>
 
-          <input
-            ref={fileInputRef}
-            className="hidden"
-            type="file"
-            accept={docType === "PROFILE_IMAGE" ? ".png,.jpg,.jpeg" : ".pdf,.docx,.png,.jpg,.jpeg"}
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        <section style={card}>
+          <h1 style={{ marginTop: 0 }}>Upload Document</h1>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+            {/* File picker (disabled for Project unless you want an asset) */}
+            <input
+              type="file"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              style={{ ...input, padding: 8 }}
+              disabled={docType === "PROJECT"}
             />
 
-            <button className="btn btn-outline" onClick={handlePick}>
-              Choose File
-            </button>
-
-            <select
-              className="select"
-              value={docType}
-              onChange={(e) => setDocType(e.target.value)}
-            >
+            <select value={docType} onChange={(e) => setDocType(e.target.value)} style={input}>
               <option value="CV">CV / Résumé</option>
               <option value="CERTIFICATE">Certificate</option>
-              <option value="RECOMMENDATION">Recommendation Letter</option>
+              <option value="RECOMMENDATION">Recommendation</option>
               <option value="PROFILE_IMAGE">Profile Image</option>
-              <option value="OTHER">Other</option>
+              <option value="PROJECT">Project</option>
             </select>
 
-            <button className="btn" onClick={handleUpload} disabled={!file || uploading}>
-              {uploading ? `Uploading… ${progress}%` : "Upload"}
+            <button onClick={handleUpload} disabled={uploading} style={btn}>
+              {uploading ? "Uploading…" : "Upload"}
             </button>
-
-            <div>
-            {docType === "PROFILE_IMAGE" && (
-                <span className="meta">PNG/JPG only · will appear on your portfolio</span>
-            )}
-            {file && (
-                <span className="meta">
-                {file.name} · {(file.size / (1024 * 1024)).toFixed(2)} MB
-                </span>
-            )}
           </div>
 
-          <div className="card">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th className="th">Name</th>
-                  <th className="th">Type</th>
-                  <th className="th">Size</th>
-                  <th className="th">Uploaded</th>
-                  <th className="th" style={{textAlign:"right"}}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {docs.length === 0 && (
-                  <tr className="row">
-                    <td className="td" colSpan={5} style={{color:"#6b7280"}}>
-                      No documents yet.
-                    </td>
-                  </tr>
-                )}
-                {docs.map((d) => (
-                  <tr key={d.id} className="row">
-                    <td className="td">
-                      <div className="nameCell">
-                        <span className="docIcon">≡</span>
-                        <a className="link" href={d.file} target="_blank" rel="noreferrer">
-                          {d.title || d.original_name}
-                        </a>
-                      </div>
-                    </td>
-                    <td className="td">{d.doc_type}</td>
-                    <td className="td">{(d.size_bytes / (1024 * 1024)).toFixed(2)} MB</td>
-                    <td className="td">{new Date(d.uploaded_at).toLocaleString()}</td>
-                    <td className="td actions">
-                      <button className="btn btn-outline" onClick={() => deleteDoc(d.id)}>
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* Optional display name for all types */}
+          <div style={{ marginBottom: 10 }}>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Display name (button/card title)"
+              style={{ ...input, width: 360 }}
+            />
+          </div>
 
-            {uploading && (
-              <div style={{marginTop:14}}>
-                <div style={{height:10, background:"#eef2ff", borderRadius:999}}>
-                  <div
-                    style={{
-                      height:"100%",
-                      width:`${progress}%`,
-                      background:"linear-gradient(90deg,#8b5cf6,#6366f1)",
-                      borderRadius:999,
-                      transition:"width .15s ease"
-                    }}
-                  />
+          {/* Project-only inputs */}
+          {docType === "PROJECT" && (
+            <div style={{ display: "grid", gap: 10, marginBottom: 10 }}>
+              <input
+                value={projectUrl}
+                onChange={(e) => setProjectUrl(e.target.value)}
+                placeholder="GitHub URL (https://github.com/you/repo)"
+                style={input}
+              />
+              <textarea
+                value={projectDesc}
+                onChange={(e) => setProjectDesc(e.target.value)}
+                rows={3}
+                placeholder="Short project description"
+                style={{ ...input, resize: "vertical" }}
+              />
+            </div>
+          )}
+
+          {err && <div style={{ marginTop: 8, color: "#fecaca" }}>{err}</div>}
+        </section>
+
+        <section style={{ ...card, marginTop: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: 8, color: "#cbd5e1", marginBottom: 8 }}>
+            <div>Name</div><div>Type</div><div>Size</div><div>Action</div>
+          </div>
+
+          {loading ? (
+            <div style={{ color: "#94a3b8" }}>Loading…</div>
+          ) : (
+            items.map((d) => (
+              <div key={d.id} style={{
+                display: "grid",
+                gridTemplateColumns: "1fr auto auto auto",
+                gap: 8,
+                alignItems: "center",
+                padding: "10px 0",
+                borderTop: "1px solid #334155"
+              }}>
+                <a href={d.file || d.external_url} target="_blank" rel="noreferrer" style={{ color: "#c7d2fe", textDecoration: "none" }}>
+                  {d.title || d.original_name || `Item #${d.id}`}
+                </a>
+                <div style={{ color: "#94a3b8" }}>{d.doc_type}</div>
+                <div style={{ color: "#94a3b8" }}>{d.size_bytes ? `${(d.size_bytes/1024/1024).toFixed(2)} MB` : "-"}</div>
+                <div>
+                  <button onClick={() => handleDelete(d.id)} style={btn}>Delete</button>
                 </div>
               </div>
-            )}
-          </div>
-        </div>
-
-        <div className="footerImg">
-          <div className="docSheet" />
-          <div className="docLines">
-            <div/><div/><div/><div/><div/><div/><div/>
-          </div>
-        </div>
+            ))
+          )}
+        </section>
       </div>
     </div>
   );

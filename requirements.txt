@@ -1,5 +1,4 @@
 django
-django 
 djangorestframework 
 django-cors-headers 
 python-magic-bin
@@ -8,3 +7,6 @@ django-cors-headers
 pypdf 
 python-dotenv
 openai
+google-generativeai
+beautifulsoup4 
+lxml

@@ -44,6 +44,9 @@ INSTALLED_APPS = [
     "rest_framework",
     "uploads",
     "profiles",
+    "assistants",
+    "jobs",
+    "django_filters",
 ]
 
 MIDDLEWARE = [

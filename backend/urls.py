@@ -6,12 +6,15 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 router = DefaultRouter()
-router.register(r"documents", DocumentViewSet)
+router.register(r"uploads", DocumentViewSet, basename="uploads")
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", include(router.urls)),
     path("api/", include("profiles.urls")), 
+    path("api/", include("assistants.urls")),
+    path("api/", include("jobs.urls")),
+
 ]
 
 if settings.DEBUG:
