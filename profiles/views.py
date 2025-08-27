@@ -93,13 +93,13 @@ def generate_profile(request):
     
     openai_key = getattr(settings, "OPEN_API_KEY", "") or os.getenv("OPEN_API_KEY", "")
     client = OpenAI(
-        api_key= ''
+        api_key= openai_key
     )
 
     system = (
     "You are a portfolio builder. Parse the user's CV text and return a single JSON object with exactly "
     "two keys: 'profile' and 'html'.\n"
-    "profile must be: {name, title, summary, skills: string[], experience: [{company, role, start, end, bullets: string[]}], "
+    "profile must be: {name, title, ,summary,contacts: string[], skills: string[], experience: [{company, role, start, end, bullets: string[]}], "
     "education: [{school, degree, start, end}], links: {linkedin?, github?, website?}}\n"
     "html must be a responsive DARK MODE section using inline CSS only. Colors: background #0f172a, "
     "panels #1e293b, text #f1f5f9, accents #8b5cf6/#7c3aed."
@@ -127,7 +127,7 @@ def generate_profile(request):
         print(f"[OpenAI Fallback] {e}. Using Gemini instead.")
         pass
         # --- Gemini fallback ---
-        gem_key = ""#getattr(settings, "GEMINI_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
+        gem_key = getattr(settings, "GEMINI_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
         if not gem_key:
             return Response({"detail": "Both OpenAI and Gemini unavailable (no GEMINI_API_KEY)."}, status=502)
         genai.configure(api_key=gem_key)

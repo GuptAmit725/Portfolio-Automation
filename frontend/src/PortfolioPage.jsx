@@ -7,6 +7,27 @@ import ProjectsSection from "./ProjectsSection";
 const API_PROFILE = "http://127.0.0.1:8000/api/profile/generate/";
 const API_JOBS    = "http://127.0.0.1:8000/api/jobs/match/";
 
+// Helpers to pull first email + phone from profile.contacts
+const extractContactInfo = (contacts = []) => {
+  const emailRe = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+  const phoneRe = /(\+?\d[\d\s\-().]{7,}\d)/; // forgiving matcher
+
+  let email = "", phone = "";
+  for (const c of contacts) {
+    if (!email) {
+      const m = String(c).match(emailRe);
+      if (m) email = m[0];
+    }
+    if (!phone) {
+      const m = String(c).match(phoneRe);
+      if (m) phone = m[0].replace(/\s{2,}/g, " ").trim();
+    }
+    if (email && phone) break;
+  }
+  return { email, phone };
+};
+
+
 export default function PortfolioPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -17,6 +38,7 @@ export default function PortfolioPage() {
   const [jobsErr, setJobsErr] = useState("");
   const [jobs, setJobs] = useState([]);
   const [jobMeta, setJobMeta] = useState(null);
+  const { email: contactEmail, phone: contactPhone } = extractContactInfo(profile?.contacts || []);
 
   const generate = async () => {
     setLoading(true);
@@ -97,25 +119,111 @@ export default function PortfolioPage() {
 
         {/* HEADER */}
         <Card>
-          <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 16, alignItems: "center" }}>
+            {/* Avatar */}
             <div
               style={{
-                width: 84, height: 84, borderRadius: "50%",
-                background: "#111827", border: "3px solid #e5e7eb22", overflow: "hidden", flex: "0 0 auto"
+                width: 84,
+                height: 84,
+                borderRadius: "50%",
+                background: "#111827",
+                border: "3px solid #e5e7eb22",
+                overflow: "hidden",
+                flex: "0 0 auto"
               }}
             >
               {profile?.photo ? (
-                <img src={profile.photo} alt="Profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <img
+                  src={profile.photo}
+                  alt="Profile"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
               ) : (
-                <span role="img" aria-label="avatar" style={{ fontSize: 38, display: "grid", placeItems: "center", height: "100%" }}>👤</span>
+                <span
+                  role="img"
+                  aria-label="avatar"
+                  style={{ fontSize: 38, display: "grid", placeItems: "center", height: "100%" }}
+                >
+                  👤
+                </span>
               )}
             </div>
 
+            {/* Name + Title */}
             <div>
-              <h1 style={{ margin: 0, fontSize: 36, lineHeight: 1.1 }}>{profile?.name || "Your Name"}</h1>
+              <h1 style={{ margin: 0, fontSize: 36, lineHeight: 1.1 }}>
+                {profile?.name || "Your Name"}
+              </h1>
               <p style={{ margin: "6px 0 0", color: "#cbd5e1", fontSize: 18 }}>
                 {profile?.title || "Job Title"}
               </p>
+            </div>
+
+            {/* Right-side: Email + Phone */}
+            <div
+              style={{
+                justifySelf: "end",
+                textAlign: "right",
+                display: "grid",
+                gap: 8,
+                minWidth: 220
+              }}
+            >
+              {/* Email */}
+              {contactEmail ? (
+                <a
+                  href={`mailto:${contactEmail}`}
+                  style={{
+                    textDecoration: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                    gap: 8,
+                    padding: "8px 12px",
+                    borderRadius: 10,
+                    background: "#0b1220",
+                    border: "1px solid #1f2a44",
+                    color: "#e5e7eb",
+                    fontWeight: 700
+                  }}
+                  title={contactEmail}
+                >
+                  ✉️
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {contactEmail}
+                  </span>
+                </a>
+              ) : (
+                <div style={{ color: "#94a3b8", fontSize: 14 }}>Email: —</div>
+              )}
+
+              {/* Phone */}
+              {contactPhone ? (
+                <a
+                  href={`tel:${contactPhone.replace(/[^\d+]/g, "")}`}
+                  style={{
+                    textDecoration: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                    gap: 8,
+                    padding: "8px 12px",
+                    borderRadius: 10,
+                    background: "#0b1220",
+                    border: "1px solid #1f2a44",
+                    color: "#e5e7eb",
+                    fontWeight: 700
+                  }}
+                  title={contactPhone}
+                >
+                  📞
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {contactPhone}
+                  </span>
+                </a>
+              ) : (
+                <div style={{ color: "#94a3b8", fontSize: 14 }}>Phone: —</div>
+              )}
             </div>
           </div>
         </Card>
